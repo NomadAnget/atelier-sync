@@ -82,6 +82,7 @@ def brief(stderr: str) -> str:
 class GitError(Exception):
     def __init__(self, what: str, stderr: str):
         super().__init__(f"{what}: {brief(stderr)}")
+        self.stderr = stderr
 
 
 def ls_remote(g: Git, url: str) -> dict[str, str]:
@@ -232,8 +233,8 @@ class Result:
 def unreachable(name: str, side: str, e: GitError) -> Result:
     """仓库不存在 → 跳过(还没建仓/未授权到该仓,不影响其他仓);
     认证失败等其他错误 → 报错(token 坏了是全局故障,不能静默成"跳过"而整体绿)。"""
-    msg = str(e)
-    if "not found" in msg or "does not appear to be a git repository" in msg:
+    msg, full = str(e), e.stderr
+    if "not found" in full or "does not appear to be a git repository" in full:
         return Result(name, "skipped", [f"{side} 侧不存在或 token 未授权该仓:{msg}"])
     return Result(name, "error", [f"{side} 侧访问失败:{msg}"])
 
