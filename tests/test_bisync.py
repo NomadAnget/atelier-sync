@@ -113,6 +113,21 @@ class BisyncTest(unittest.TestCase):
         self.assertEqual(self.run_sync(dry=True).status, "planned")
         self.assertEqual(self.refs(self.gh), before)
 
+    def test_empty_github_gets_default_branch_first(self):
+        # Forgejo 有 master + 字母序更靠前的 feat/a;GitHub 是空仓
+        sh("git", "push", "-q", str(self.fj), "HEAD:refs/heads/feat/a", cwd=self.wc)
+        shutil.rmtree(self.gh)
+        sh("git", "init", "--bare", "-q", str(self.gh))
+        pushed = []
+        orig = bisync.push_one
+        bisync.push_one = lambda g, w, url, spec, tries=3: pushed.append(spec) or orig(g, w, url, spec, tries)
+        try:
+            self.assertEqual(self.run_sync().status, "synced")
+        finally:
+            bisync.push_one = orig
+        self.assertTrue(pushed[0].endswith(":refs/heads/master"), pushed)
+        self.assertEqual(self.run_sync().status, "in-sync")
+
     def test_missing_side_skipped(self):
         bisync.repo_urls = lambda cfg, name: (str(self.fj), str(self.tmp / "nope.git"))
         self.assertEqual(self.run_sync().status, "skipped")

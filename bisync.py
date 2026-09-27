@@ -76,14 +76,18 @@ class GitError(Exception):
 
 
 def ls_remote(g: Git, url: str) -> dict[str, str]:
-    """返回 {refs/heads/x | refs/tags/x: sha}。仓库不存在/无权限抛 GitError。"""
-    out = g.run("ls-remote", "--heads", "--tags", url).stdout
+    """返回 {refs/heads/x | refs/tags/x: sha},另含 "HEAD" -> 默认分支 ref(若有)。
+    仓库不存在/无权限抛 GitError。"""
+    out = g.run("ls-remote", "--symref", url, "HEAD", "refs/heads/*", "refs/tags/*").stdout
     refs = {}
     for line in out.splitlines():
-        sha, ref = line.split("\t", 1)
-        if ref.endswith("^{}"):
-            continue  # 附注 tag 的剥皮行,比较用 tag 对象本身
-        refs[ref] = sha
+        left, ref = line.split("\t", 1)
+        if left.startswith("ref: "):          # --symref 行:"ref: refs/heads/master\tHEAD"
+            refs["HEAD"] = left[5:]
+            continue
+        if ref == "HEAD" or ref.endswith("^{}"):
+            continue  # HEAD 的 sha 行 / 附注 tag 的剥皮行(比较用 tag 对象本身)
+        refs[ref] = left
     return {r: s for r, s in refs.items() if not r.startswith(OWN_REFS)}
 
 
@@ -98,8 +102,12 @@ class Plan:
 
 
 def make_plan(g: Git, work: Path, fj: dict[str, str], gh: dict[str, str]) -> Plan:
+    """HEAD 不参与比较,只决定顺序:Forgejo 默认分支最先推 ——
+    GitHub 空仓把收到的第一个分支设为默认分支。"""
     p = Plan()
-    for ref in sorted(set(fj) | set(gh)):
+    head = fj.get("HEAD") or gh.get("HEAD")
+    refs = sorted((set(fj) | set(gh)) - {"HEAD"}, key=lambda r: (r != head, r))
+    for ref in refs:
         a, b = fj.get(ref), gh.get(ref)
         if a == b:
             continue
@@ -228,7 +236,7 @@ def sync_repo(g: Git, cfg: dict, name: str, work_root: Path, dry: bool) -> Resul
         gh = ls_remote(g, gh_url)
     except GitError as e:
         return Result(name, "skipped", [f"GitHub 侧不可访问(未建仓或 token 未授权):{e}"])
-    if fj == gh:
+    if {k: v for k, v in fj.items() if k != "HEAD"} == {k: v for k, v in gh.items() if k != "HEAD"}:
         return Result(name, "in-sync")
 
     work = work_root / f"{name}.git"
