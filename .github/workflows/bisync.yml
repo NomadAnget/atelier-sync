@@ -1,11 +1,11 @@
 name: bisync(Forgejo ⇄ GitHub)
 # 运行列表标题:通知触发的显示来源端与仓库,手动/定时各自标明,一眼看出每次同步的起因
-run-name: "${{ github.event_name == 'repository_dispatch' && format('sync ← {0} · {1} · {2}', github.event.client_payload.from, github.event.client_payload.repo, github.event.client_payload.ref) || github.event_name == 'schedule' && 'bisync · 每小时兜底' || format('bisync · 手动{0}{1}', inputs.dry_run && '(dry-run)' || '', inputs.only && format(' · {0}', inputs.only) || '') }}"
+run-name: "${{ github.event_name == 'repository_dispatch' && format('sync ← {0} · {1} · {2}', github.event.client_payload.from, github.event.client_payload.repo, github.event.client_payload.ref) || github.event_name == 'schedule' && 'bisync · 每日兜底' || format('bisync · 手动{0}{1}', inputs.dry_run && '(dry-run)' || '', inputs.only && format(' · {0}', inputs.only) || '') }}"
 
 # 触发:
 #   repository_dispatch sync —— 各仓库 push 时由通知工作流触发(即时)
 #   workflow_dispatch        —— 手动(可 dry-run / 只同步指定仓库)
-#   schedule                 —— 每小时兜底一次,防通知漏发
+#   schedule                 —— 每天兜底一次(全量),补通知漏发/同步失败
 # 每次运行都检查 repos.toml 里的全部仓库(已一致的只花一次 ls-remote),所以并发排队时丢掉中间的运行也不会漏。
 on:
   repository_dispatch:
@@ -21,7 +21,7 @@ on:
         type: string
         default: ""
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 19 * * *"   # UTC 19:17 = 北京时间 03:17
 
 # 安全开关:仓库变量 BISYNC_ENABLED 不为 "true" 时,自动触发(dispatch/定时)一律只做 dry-run。
 # 手动运行以表单里的 dry_run 为准。

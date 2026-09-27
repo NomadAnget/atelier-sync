@@ -1,7 +1,7 @@
 name: 通知 bisync
 
 # 任何分支/tag 推送到 GitHub 后,触发 NomadAnget/atelier-sync 的双向同步(即时,不等每小时兜底)。
-# 凭据:本仓 Actions secret GH_SYNC_TOKEN(个人账号无账号级 secret,需每仓配置);未配置则跳过,靠每小时兜底。
+# 凭据:本仓 Actions secret GH_SYNC_TOKEN(个人账号无账号级 secret,需每仓配置);未配置则跳过,靠每日兜底。
 on:
   push:
     branches: ["**"]
@@ -17,7 +17,7 @@ jobs:
         env:
           TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
         run: |
-          if [ -z "$TOKEN" ]; then echo "未配置 GH_SYNC_TOKEN,跳过(靠每小时兜底)"; exit 0; fi
+          if [ -z "$TOKEN" ]; then echo "未配置 GH_SYNC_TOKEN,跳过(靠每日兜底)"; exit 0; fi
           curl -sSf -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: application/vnd.github+json" \
