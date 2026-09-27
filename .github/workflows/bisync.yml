@@ -25,7 +25,7 @@ on:
 # 手动运行以表单里的 dry_run 为准。
 
 permissions:
-  contents: read
+  contents: read   # 本仓只读;对其他仓的读写与开 PR 全用 GH_SYNC_TOKEN
 
 concurrency:
   group: bisync
@@ -37,6 +37,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false   # 否则 GITHUB_TOKEN 的认证头会盖掉 GH_SYNC_TOKEN(它只能访问本仓)
 
       - name: 恢复裸仓缓存(增量抓取)
         uses: actions/cache@v4

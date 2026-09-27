@@ -4,12 +4,14 @@
   分支  两边相同                → 跳过
         只在一边有              → 复制到另一边
         一边是另一边的祖先       → 把落后的一边快进到新的一边
-        两边分叉                → 不动,记为冲突(需人工合并)
+        两边分叉                → 两边分支都不动;把 Forgejo 版推到 GitHub 的 bisync/forgejo/<分支>,
+                                  并在 GitHub 开 PR 合入 <分支>。PR 合并后下次同步即快进回 Forgejo
   tag   只在一边有              → 复制到另一边
         两边同名但指向不同       → 不动,记为冲突
   删除  一律不跟随(某侧删掉的分支会从另一侧补回来)
 
 推送全部是普通 push(不 --force):即便判断与推送之间有人抢先推送,服务器也只会拒绝,不会覆盖。
+唯一例外是本工具自有的 GitHub 分支 bisync/*(PR 源分支),它不参与同步,按需强制更新。
 
 用法:
   python3 bisync.py --dry-run          # 只打印计划
@@ -22,14 +24,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib import error, request
 
 HERE = Path(__file__).resolve().parent
+PR_PREFIX = "bisync/forgejo/"          # GitHub 上的 PR 源分支前缀(不参与同步)
+OWN_REFS = "refs/heads/bisync/"
 
 
 # ---------- git 调用 ----------
@@ -77,7 +83,7 @@ def ls_remote(g: Git, url: str) -> dict[str, str]:
         if ref.endswith("^{}"):
             continue  # 附注 tag 的剥皮行,比较用 tag 对象本身
         refs[ref] = sha
-    return refs
+    return {r: s for r, s in refs.items() if not r.startswith(OWN_REFS)}
 
 
 # ---------- 同步计划 ----------
@@ -86,7 +92,8 @@ def ls_remote(g: Git, url: str) -> dict[str, str]:
 class Plan:
     to_github: dict[str, str] = field(default_factory=dict)   # ref -> sha
     to_forgejo: dict[str, str] = field(default_factory=dict)
-    conflicts: list[str] = field(default_factory=list)
+    diverged: dict[str, tuple[str, str]] = field(default_factory=dict)   # ref -> (forgejo, github)
+    conflicts: list[str] = field(default_factory=list)                   # tag 冲突(PR 解决不了)
 
 
 def make_plan(g: Git, work: Path, fj: dict[str, str], gh: dict[str, str]) -> Plan:
@@ -106,7 +113,7 @@ def make_plan(g: Git, work: Path, fj: dict[str, str], gh: dict[str, str]) -> Pla
         elif is_ancestor(g, work, b, a):
             p.to_github[ref] = a
         else:
-            p.conflicts.append(f"{ref}: Forgejo={a[:8]} GitHub={b[:8]}(分叉,需人工合并)")
+            p.diverged[ref] = (a, b)
     return p
 
 
@@ -135,12 +142,59 @@ def push(g: Git, work: Path, url: str, updates: dict[str, str]) -> list[str]:
     return failed
 
 
+# ---------- 分叉 → GitHub PR ----------
+
+def gh_api(method: str, path: str, body: dict | None = None):
+    req = request.Request(f"https://api.github.com{path}", method=method,
+                          data=json.dumps(body).encode() if body is not None else None,
+                          headers={"Authorization": f"Bearer {os.environ['GH_SYNC_TOKEN']}",
+                                   "Accept": "application/vnd.github+json",
+                                   "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except error.HTTPError as e:
+        raise GitError(f"GitHub API {method} {path}", f"HTTP {e.code} {e.read().decode(errors='replace')[:200]}")
+
+
+def ensure_pr(owner: str, repo: str, head: str, base: str, fj_sha: str, gh_sha: str) -> str:
+    """已有同 head→base 的 open PR 就复用(源分支已更新,PR 自动刷新),否则新建。返回 PR 链接。"""
+    existing = gh_api("GET", f"/repos/{owner}/{repo}/pulls?state=open&head={owner}:{head}&base={base}")
+    if existing:
+        return existing[0]["html_url"]
+    body = (f"Forgejo 与 GitHub 上的 `{base}` 分叉了,bisync 无法快进。\n\n"
+            f"- Forgejo `{base}` = `{fj_sha[:8]}`(即本 PR 的源分支 `{head}`)\n"
+            f"- GitHub `{base}` = `{gh_sha[:8]}`\n\n"
+            f"合并本 PR(有冲突就在这里解决)后,下一次同步会把合并结果快进回 Forgejo。\n"
+            f"合并前 Forgejo 上 `{base}` 若有新提交,源分支会被自动更新。")
+    pr = gh_api("POST", f"/repos/{owner}/{repo}/pulls",
+                {"title": f"bisync: 合并 Forgejo 上 {base} 的分叉提交", "head": head, "base": base, "body": body})
+    return pr["html_url"]
+
+
+def open_prs(g: Git, work: Path, gh_url: str, owner: str, repo: str,
+             diverged: dict[str, tuple[str, str]]) -> tuple[list[str], list[str]]:
+    ok, failed = [], []
+    for ref, (a, b) in diverged.items():
+        base = ref.removeprefix("refs/heads/")
+        head = PR_PREFIX + base
+        r = g.run("push", "-q", "--no-verify", gh_url, f"+{a}:refs/heads/{head}", cwd=work, check=False)
+        if r.returncode != 0:
+            failed.append(f"{ref}: 推送 PR 源分支失败:{r.stderr.strip().splitlines()[-1:]}")
+            continue
+        try:
+            ok.append(f"🔀 {ref} 分叉 → PR {ensure_pr(owner, repo, head, base, a, b)}")
+        except GitError as e:
+            failed.append(f"{ref}: 开 PR 失败:{e}")
+    return ok, failed
+
+
 # ---------- 主流程 ----------
 
 @dataclass
 class Result:
     name: str
-    status: str                     # in-sync / synced / planned / skipped / error / conflict
+    status: str                     # in-sync / synced / planned / pr / skipped / error / conflict
     lines: list[str] = field(default_factory=list)
 
 
@@ -173,16 +227,19 @@ def sync_repo(g: Git, cfg: dict, name: str, work_root: Path, dry: bool) -> Resul
     lines += [f"→ Forgejo {ref} = {sha[:8]}" for ref, sha in p.to_forgejo.items()]
     lines += [f"⚠ 冲突 {c}" for c in p.conflicts]
     if dry:
-        return Result(name, "conflict" if p.conflicts else "planned", lines)
+        lines += [f"🔀 {ref} 分叉 Forgejo={a[:8]} GitHub={b[:8]} → 将开 PR" for ref, (a, b) in p.diverged.items()]
+        return Result(name, "conflict" if p.conflicts else "pr" if p.diverged else "planned", lines)
 
     failed = push(g, work, gh_url, p.to_github) + push(g, work, fj_url, p.to_forgejo)
-    lines += [f"✗ 推送失败 {f}" for f in failed]
-    if failed:
+    prs, pr_failed = open_prs(g, work, gh_url, cfg["github"]["owner"], name, p.diverged)
+    lines += prs
+    lines += [f"✗ 推送失败 {f}" for f in failed + pr_failed]
+    if failed or pr_failed:
         return Result(name, "error", lines)
-    return Result(name, "conflict" if p.conflicts else "synced", lines)
+    return Result(name, "conflict" if p.conflicts else "pr" if p.diverged else "synced", lines)
 
 
-ICON = {"in-sync": "✅", "synced": "🔄", "planned": "📝", "skipped": "⏭️", "error": "❌", "conflict": "⚠️"}
+ICON = {"in-sync": "✅", "synced": "🔄", "planned": "📝", "pr": "🔀", "skipped": "⏭️", "error": "❌", "conflict": "⚠️"}
 
 
 def report(results: list[Result], dry: bool) -> str:

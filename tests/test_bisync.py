@@ -33,6 +33,7 @@ class BisyncTest(unittest.TestCase):
             sh("git", "push", "-q", str(r), "master", cwd=self.wc)
         bisync.repo_urls = lambda cfg, name: (str(self.fj), str(self.gh))
         self.g = bisync.Git([])
+        self.cfg = {"github": {"owner": "o"}}
 
     def commit(self, msg):
         (self.wc / "f").write_text(msg)
@@ -44,7 +45,7 @@ class BisyncTest(unittest.TestCase):
         return bisync.ls_remote(self.g, str(repo))
 
     def run_sync(self, dry=False):
-        return bisync.sync_repo(self.g, {}, "x", self.tmp / "work", dry)
+        return bisync.sync_repo(self.g, self.cfg, "x", self.tmp / "work", dry)
 
     def test_in_sync(self):
         self.assertEqual(self.run_sync().status, "in-sync")
@@ -68,17 +69,32 @@ class BisyncTest(unittest.TestCase):
         self.assertEqual(self.run_sync().status, "synced")
         self.assertEqual(self.refs(self.fj)["refs/heads/master"], b)
 
-    def test_diverged_is_conflict_and_untouched(self):
+    def test_diverged_opens_pr_then_fast_forwards_after_merge(self):
         base = sh("git", "rev-parse", "HEAD", cwd=self.wc)
         a = self.commit("fj side")
         sh("git", "push", "-q", str(self.fj), "master", cwd=self.wc)
         sh("git", "reset", "-q", "--hard", base, cwd=self.wc)
         b = self.commit("gh side")
         sh("git", "push", "-q", str(self.gh), "master", cwd=self.wc)
+        calls = []
+        bisync.ensure_pr = lambda owner, repo, head, base, fs, gs: calls.append((head, base, fs, gs)) or "PR-URL"
         r = self.run_sync()
-        self.assertEqual(r.status, "conflict", r.lines)
+        self.assertEqual(r.status, "pr", r.lines)
+        # 两边 master 都不动
         self.assertEqual(self.refs(self.fj)["refs/heads/master"], a)
         self.assertEqual(self.refs(self.gh)["refs/heads/master"], b)
+        # Forgejo 版推到 GitHub 的 PR 源分支,且开了 PR
+        gh_all = sh("git", "ls-remote", str(self.gh))
+        self.assertIn(f"{a}\trefs/heads/bisync/forgejo/master", gh_all)
+        self.assertEqual(calls, [("bisync/forgejo/master", "master", a, b)])
+        # bisync/* 不会被复制到 Forgejo
+        self.assertNotIn("bisync/", sh("git", "ls-remote", str(self.fj)))
+        # 在 GitHub 合并 PR 后,下次同步快进回 Forgejo
+        sh("git", "merge", "-q", "--no-edit", "-X", "ours", a, cwd=self.wc)
+        m = sh("git", "rev-parse", "HEAD", cwd=self.wc)
+        sh("git", "push", "-q", str(self.gh), "master", cwd=self.wc)
+        self.assertEqual(self.run_sync().status, "synced")
+        self.assertEqual(self.refs(self.fj)["refs/heads/master"], m)
 
     def test_tag_conflict(self):
         sh("git", "tag", "v1", cwd=self.wc)
