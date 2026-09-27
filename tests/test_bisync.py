@@ -128,6 +128,17 @@ class BisyncTest(unittest.TestCase):
         self.assertTrue(pushed[0].endswith(":refs/heads/master"), pushed)
         self.assertEqual(self.run_sync().status, "in-sync")
 
+    def test_auth_failure_is_error_not_skipped(self):
+        err = bisync.GitError("ls-remote", "fatal: Authentication failed for 'https://x/'")
+        self.assertEqual(bisync.unreachable("x", "GitHub", err).status, "error")
+        nf = bisync.GitError("ls-remote", "fatal: repository 'https://x/' not found")
+        self.assertEqual(bisync.unreachable("x", "GitHub", nf).status, "skipped")
+
+    def test_brief_keeps_rpc_line(self):
+        b = bisync.brief("error: RPC failed; HTTP 403 curl 22\nsend-pack: x\nfatal: the remote end hung up unexpectedly\n")
+        self.assertIn("HTTP 403", b)
+        self.assertIn("hung up", b)
+
     def test_missing_side_skipped(self):
         bisync.repo_urls = lambda cfg, name: (str(self.fj), str(self.tmp / "nope.git"))
         self.assertEqual(self.run_sync().status, "skipped")

@@ -70,9 +70,18 @@ class Git:
         return r
 
 
+def brief(stderr: str) -> str:
+    """git 报错摘要:优先带 HTTP 码/RPC 失败那行(最后一行常只是 "hung up unexpectedly")。"""
+    lines = [l.strip() for l in stderr.strip().splitlines() if l.strip()]
+    if not lines:
+        return "(无输出)"
+    key = [l for l in lines if "RPC failed" in l or "HTTP" in l or "returned error" in l]
+    return " | ".join(dict.fromkeys(key[:1] + lines[-1:]))
+
+
 class GitError(Exception):
     def __init__(self, what: str, stderr: str):
-        super().__init__(f"{what}: {stderr.splitlines()[-1] if stderr else '(无输出)'}")
+        super().__init__(f"{what}: {brief(stderr)}")
 
 
 def ls_remote(g: Git, url: str) -> dict[str, str]:
@@ -160,8 +169,7 @@ def push(g: Git, work: Path, url: str, updates: dict[str, str]) -> list[str]:
     for ref, sha in updates.items():
         r = push_one(g, work, url, f"{sha}:{ref}")
         if r.returncode != 0:
-            last = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "(无输出)"
-            failed.append(f"{ref}: {last}")
+            failed.append(f"{ref}: {brief(r.stderr)}")
     return failed
 
 
@@ -203,7 +211,7 @@ def open_prs(g: Git, work: Path, gh_url: str, owner: str, repo: str,
         head = PR_PREFIX + base
         r = push_one(g, work, gh_url, f"+{a}:refs/heads/{head}")
         if r.returncode != 0:
-            failed.append(f"{ref}: 推送 PR 源分支失败:{r.stderr.strip().splitlines()[-1:]}")
+            failed.append(f"{ref}: 推送 PR 源分支失败:{brief(r.stderr)}")
             continue
         try:
             ok.append(f"🔀 {ref} 分叉 → PR {ensure_pr(owner, repo, head, base, a, b)}")
@@ -221,6 +229,15 @@ class Result:
     lines: list[str] = field(default_factory=list)
 
 
+def unreachable(name: str, side: str, e: GitError) -> Result:
+    """仓库不存在 → 跳过(还没建仓/未授权到该仓,不影响其他仓);
+    认证失败等其他错误 → 报错(token 坏了是全局故障,不能静默成"跳过"而整体绿)。"""
+    msg = str(e)
+    if "not found" in msg or "does not appear to be a git repository" in msg:
+        return Result(name, "skipped", [f"{side} 侧不存在或 token 未授权该仓:{msg}"])
+    return Result(name, "error", [f"{side} 侧访问失败:{msg}"])
+
+
 def repo_urls(cfg: dict, name: str) -> tuple[str, str]:
     return (f"https://{cfg['forgejo']['host']}/{cfg['forgejo']['owner']}/{name}.git",
             f"https://github.com/{cfg['github']['owner']}/{name}.git")
@@ -231,11 +248,11 @@ def sync_repo(g: Git, cfg: dict, name: str, work_root: Path, dry: bool) -> Resul
     try:
         fj = ls_remote(g, fj_url)
     except GitError as e:
-        return Result(name, "skipped", [f"Forgejo 侧不可访问:{e}"])
+        return unreachable(name, "Forgejo", e)
     try:
         gh = ls_remote(g, gh_url)
     except GitError as e:
-        return Result(name, "skipped", [f"GitHub 侧不可访问(未建仓或 token 未授权):{e}"])
+        return unreachable(name, "GitHub", e)
     if {k: v for k, v in fj.items() if k != "HEAD"} == {k: v for k, v in gh.items() if k != "HEAD"}:
         return Result(name, "in-sync")
 
