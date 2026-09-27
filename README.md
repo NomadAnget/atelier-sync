@@ -19,7 +19,7 @@ Forgejo(`forgejo.hurcaguari.top/Carnation`)⇄ GitHub(`github.com/NomadAnget`)**
 ## 组成
 
 - `bisync.py` —— 同步脚本(标准库 + git);`repos.toml` —— 仓库清单
-- `.github/workflows/bisync.yml` —— 运行入口:通知触发 / 手动 / 每小时兜底
+- `.github/workflows/bisync.yml` —— 运行入口:通知触发(**只同步被通知的仓**)/ 手动 / 每小时兜底(后两者查全部)
 - `templates/forgejo-notify.yml` —— 放进各仓 `.forgejo/workflows/`,Forgejo 推送后即时触发
 - `templates/github-notify.yml` —— 放进各仓 `.github/workflows/`,GitHub 推送后即时触发(需该仓配 secret)
 

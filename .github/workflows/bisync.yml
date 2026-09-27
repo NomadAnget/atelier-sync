@@ -29,8 +29,11 @@ on:
 permissions:
   contents: read   # 本仓只读;对其他仓的读写与开 PR 全用 GH_SYNC_TOKEN
 
+# 按触发来源分组排队:同组最多保留一个排队中的运行(新的顶掉旧的)。
+# 通知触发只同步被通知的仓,若共用一组,A、B 两仓先后通知时 B 会顶掉 A → A 漏同步;
+# 故按"端/仓"分组。不同仓的运行可并行;同仓两端各一组偶有重叠也无害(推送非 force,后到者只会发现已一致)。
 concurrency:
-  group: bisync
+  group: bisync-${{ github.event.client_payload.repo || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -58,11 +61,14 @@ jobs:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || github.event_name != 'workflow_dispatch' && vars.BISYNC_ENABLED != 'true' }}
           ONLY: ${{ inputs.only }}
+          NOTIFIED: ${{ github.event.client_payload.repo }}   # 通知方仓库(owner/name),只同步它
         run: |
           set -euo pipefail
           git config --global user.name bisync
           git config --global user.email bisync@localhost
           args=()
+          # 通知触发:只同步被通知的那个仓(去掉 owner 前缀);手动/每小时兜底仍查全部
+          [ -n "${NOTIFIED:-}" ] && ONLY="${NOTIFIED##*/}"
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           [ -n "${ONLY:-}" ] && args+=(--only $ONLY)
           python3 bisync.py "${args[@]}"
