@@ -45,13 +45,8 @@ jobs:
         with:
           persist-credentials: false   # 否则 GITHUB_TOKEN 的认证头会盖掉 GH_SYNC_TOKEN(它只能访问本仓)
 
-      - name: 恢复裸仓缓存(增量抓取)
-        uses: actions/cache@v4
-        with:
-          path: work
-          key: bisync-work-${{ github.run_id }}
-          restore-keys: bisync-work-
-
+      # 不缓存裸仓:私有仓代码不另存一份到 Actions 缓存(公开仓的缓存可被 fork PR 工作流读取);
+      # 每次只抓有差异的仓,现拉代价很小。
       - name: 自测
         run: python3 -m unittest discover -s tests
 
