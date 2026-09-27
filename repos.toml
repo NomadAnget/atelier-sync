@@ -6,6 +6,7 @@ repos = [
     "atelier-core",
     "atelier-studio",
     "atelier-reel-solo",
+    "atelier-reel-creator",
     # 域
     "atelier-web",
     "atelier-scheduler",
