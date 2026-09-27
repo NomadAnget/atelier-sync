@@ -11,7 +11,7 @@ repos = [
     "atelier-web",
     "atelier-scheduler",
     "atelier-task",
-    "atelier-engines",
+    # "atelier-engines",   # ⏸ 临时移出:历史瘦身(filter-repo 强推两端)期间,防 bisync 误判分叉;完成后恢复
     "atelier-platform_adapters",
     "atelier-publishers",
     "atelier-daemons",
