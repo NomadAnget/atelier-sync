@@ -28,6 +28,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,11 +132,25 @@ def fetch_both(g: Git, work: Path, fj_url: str, gh_url: str) -> None:
               f"+refs/heads/*:refs/{name}/heads/*", f"+refs/tags/*:refs/{name}/tags/*", cwd=work)
 
 
+TRANSIENT = ("hung up unexpectedly", "RPC failed", "timed out", "Could not resolve host",
+             "Connection reset", "HTTP/2 stream", "early EOF")
+
+
+def push_one(g: Git, work: Path, url: str, refspec: str, tries: int = 3) -> subprocess.CompletedProcess:
+    """普通推送;网络类错误(连接中断/超时)退避重试,其余错误(被拒/无权限)立即返回。"""
+    for i in range(tries):
+        r = g.run("push", "-q", "--no-verify", url, refspec, cwd=work, check=False)
+        if r.returncode == 0 or not any(t in r.stderr for t in TRANSIENT) or i == tries - 1:
+            return r
+        time.sleep(5 * 2 ** i)
+    return r
+
+
 def push(g: Git, work: Path, url: str, updates: dict[str, str]) -> list[str]:
     """逐 ref 普通推送(非 force、非 atomic),返回失败列表。"""
     failed = []
     for ref, sha in updates.items():
-        r = g.run("push", "-q", "--no-verify", url, f"{sha}:{ref}", cwd=work, check=False)
+        r = push_one(g, work, url, f"{sha}:{ref}")
         if r.returncode != 0:
             last = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "(无输出)"
             failed.append(f"{ref}: {last}")
@@ -178,7 +193,7 @@ def open_prs(g: Git, work: Path, gh_url: str, owner: str, repo: str,
     for ref, (a, b) in diverged.items():
         base = ref.removeprefix("refs/heads/")
         head = PR_PREFIX + base
-        r = g.run("push", "-q", "--no-verify", gh_url, f"+{a}:refs/heads/{head}", cwd=work, check=False)
+        r = push_one(g, work, gh_url, f"+{a}:refs/heads/{head}")
         if r.returncode != 0:
             failed.append(f"{ref}: 推送 PR 源分支失败:{r.stderr.strip().splitlines()[-1:]}")
             continue
