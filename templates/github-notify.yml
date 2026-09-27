@@ -1,0 +1,25 @@
+name: 通知同步
+
+# 放进每个仓库的 .github/workflows/:任何分支/tag 推送后,触发 atelier-sync 的 bisync。
+# 需要该仓库的 Actions secret GH_SYNC_TOKEN(个人账号没有账号级 secret,只能每仓配;不配则只靠每小时兜底)。
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 触发 bisync
+        env:
+          TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "未配置 GH_SYNC_TOKEN,跳过(靠每小时兜底)"; exit 0; fi
+          curl -sSf -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/NomadAnget/atelier-sync/dispatches \
+            -d "{\"event_type\":\"sync\",\"client_payload\":{\"repo\":\"${GITHUB_REPOSITORY}\",\"ref\":\"${GITHUB_REF}\"}}"

@@ -1,0 +1,32 @@
+# 双向同步的仓库清单:Forgejo `<forgejo.owner>/<name>` ⇄ GitHub `<github.owner>/<name>`(同名)。
+# 某侧不存在或 token 未授权 → 该仓跳过并在报告里标出,不影响其他仓。
+
+repos = [
+    # 内核 / 变体
+    "atelier-core",
+    "atelier-studio",
+    "atelier-reel-solo",
+    # 域
+    "atelier-web",
+    "atelier-scheduler",
+    "atelier-task",
+    "atelier-engines",
+    "atelier-platform_adapters",
+    "atelier-publishers",
+    "atelier-daemons",
+    "atelier-media",
+    "atelier-sentinel",
+    # 管线 / 前端 / 服务
+    "atelier-pipeline-video",
+    "atelier-pipeline-digest",
+    "atelier-frontend",
+    "publish-engine",
+]
+
+[forgejo]
+host = "forgejo.hurcaguari.top"
+owner = "Carnation"
+user = "Carnation"          # FORGEJO_SYNC_TOKEN 所属用户
+
+[github]
+owner = "NomadAnget"

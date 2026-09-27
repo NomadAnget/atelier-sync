@@ -1,0 +1,64 @@
+name: bisync(Forgejo ⇄ GitHub)
+
+# 触发:
+#   repository_dispatch sync —— 各仓库 push 时由通知工作流触发(即时)
+#   workflow_dispatch        —— 手动(可 dry-run / 只同步指定仓库)
+#   schedule                 —— 每小时兜底一次,防通知漏发
+# 每次运行都检查 repos.toml 里的全部仓库(已一致的只花一次 ls-remote),所以并发排队时丢掉中间的运行也不会漏。
+on:
+  repository_dispatch:
+    types: [sync]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只打印计划,不推送
+        type: boolean
+        default: true
+      only:
+        description: 只同步这些仓库(空格分隔,留空=全部)
+        type: string
+        default: ""
+  schedule:
+    - cron: "17 * * * *"
+
+# 安全开关:仓库变量 BISYNC_ENABLED 不为 "true" 时,自动触发(dispatch/定时)一律只做 dry-run。
+# 手动运行以表单里的 dry_run 为准。
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bisync
+  cancel-in-progress: false
+
+jobs:
+  bisync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 恢复裸仓缓存(增量抓取)
+        uses: actions/cache@v4
+        with:
+          path: work
+          key: bisync-work-${{ github.run_id }}
+          restore-keys: bisync-work-
+
+      - name: 自测
+        run: python3 -m unittest discover -s tests
+
+      - name: 同步
+        env:
+          FORGEJO_SYNC_TOKEN: ${{ secrets.FORGEJO_SYNC_TOKEN }}
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || github.event_name != 'workflow_dispatch' && vars.BISYNC_ENABLED != 'true' }}
+          ONLY: ${{ inputs.only }}
+        run: |
+          set -euo pipefail
+          git config --global user.name bisync
+          git config --global user.email bisync@localhost
+          args=()
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          [ -n "${ONLY:-}" ] && args+=(--only $ONLY)
+          python3 bisync.py "${args[@]}"
