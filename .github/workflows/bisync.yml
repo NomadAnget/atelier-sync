@@ -1,4 +1,6 @@
 name: bisync(Forgejo ⇄ GitHub)
+# 运行列表标题:通知触发的显示来源端与仓库,手动/定时各自标明,一眼看出每次同步的起因
+run-name: "${{ github.event_name == 'repository_dispatch' && format('sync ← {0} · {1} · {2}', github.event.client_payload.from, github.event.client_payload.repo, github.event.client_payload.ref) || github.event_name == 'schedule' && 'bisync · 每小时兜底' || format('bisync · 手动{0}{1}', inputs.dry_run && '(dry-run)' || '', inputs.only && format(' · {0}', inputs.only) || '') }}"
 
 # 触发:
 #   repository_dispatch sync —— 各仓库 push 时由通知工作流触发(即时)
