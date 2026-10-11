@@ -67,3 +67,24 @@ jobs:
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           [ -n "${ONLY:-}" ] && args+=(--only $ONLY)
           python3 bisync.py "${args[@]}"
+      - name: Relay submodule commit to atelier-studio
+        if: always() && github.event_name == 'repository_dispatch' && github.event.action == 'sync'
+        env:
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          SOURCE_REPOSITORY: ${{ github.event.client_payload.repo }}
+          SOURCE_SHA: ${{ github.event.client_payload.sha }}
+          SOURCE_REF: ${{ github.event.client_payload.ref }}
+        run: |
+          set -euo pipefail
+          case "$SOURCE_REPOSITORY" in
+            NomadAnget/atelier-web|NomadAnget/atelier-scheduler|NomadAnget/atelier-task|NomadAnget/atelier-engines|NomadAnget/atelier-platform_adapters|NomadAnget/atelier-publishers|NomadAnget/atelier-daemons|NomadAnget/atelier-media|NomadAnget/atelier-sentinel|NomadAnget/atelier-pipeline-video|NomadAnget/atelier-pipeline-digest|NomadAnget/atelier-frontend) ;;
+            *) echo "Not a studio submodule; skipping: $SOURCE_REPOSITORY"; exit 0 ;;
+          esac
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "Invalid or missing source SHA" >&2; exit 1; fi
+          if [ -z "$GH_SYNC_TOKEN" ]; then echo "GH_SYNC_TOKEN is required to notify atelier-studio" >&2; exit 1; fi
+          payload="$(jq -nc --arg repository "$SOURCE_REPOSITORY" --arg sha "$SOURCE_SHA" --arg ref "$SOURCE_REF" '{event_type:"submodule_commit",client_payload:{repository:$repository,sha:$sha,ref:$ref}}')"
+          curl -sSf -X POST \
+            -H "Authorization: Bearer $GH_SYNC_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/NomadAnget/atelier-studio/dispatches \
+            -d "$payload"
