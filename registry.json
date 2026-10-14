@@ -119,13 +119,15 @@
       "forgejo_branch": "master",
       "github_private": false,
       "forgejo_private": true,
-      "enabled": false,
-      "allow_public_import": false,
+      "enabled": true,
+      "allow_public_import": true,
       "forgejo_prefixes": [],
-      "github_prefixes": [],
+      "github_prefixes": [
+        "automation/verify-solo-20261015"
+      ],
       "adopted_forgejo_branches": [],
-      "auto_merge": false,
-      "protection_ready": false,
+      "auto_merge": true,
+      "protection_ready": true,
       "role": "assembly",
       "core_sha": "e9f3329c12cc3105ddb8258d2a380a59b6c80a4d",
       "required_context": "atelier/trusted-ci",
@@ -134,8 +136,23 @@
         [
           "{python}",
           "-m",
+          "compileall",
+          "-q",
+          "src/main.py"
+        ],
+        [
+          "{python}",
+          "-m",
           "src.main",
           "--check"
+        ],
+        [
+          "{python}",
+          "-m",
+          "unittest",
+          "-v",
+          "test_s06_alignment.TestS06Alignment.test_cross_speaker_spill_no_collision",
+          "test_s06_alignment.TestS06Alignment.test_non_binding_member_not_slowed"
         ]
       ],
       "advisory_commands": [
@@ -146,7 +163,7 @@
           "src"
         ]
       ],
-      "disable_reason": "Await branch protection, source ownership adoption, credential migration and isolated integration acceptance",
+      "disable_reason": "",
       "protection_mode": "ruleset",
       "public_variant_ci": true
     },
@@ -724,4 +741,3 @@
     "https://github.com/Brainicism/bgutil-ytdlp-pot-provider"
   ]
 }
-

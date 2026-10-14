@@ -1,3 +1,5 @@
+> Solo real-merge acceptance: manually dispatched, scoped to atelier-reel-solo only; scheduled writes stay disabled. Only automation/verify-solo-20261015 is registered for automatic merge. Existing status/provenance gates stay enforced. No business, dependency or production changes. Full-tree discipline still sees the dormant publishers checkout; report its actual findings.
+
 > 当前 studio 初步部署：仅启用 studio 的 CI 登记；自动合并及协调器写入保持关闭。控制代码与 registry 均保留在私有 atelier-sync，公开结果发布工作流改为检出固定私有控制版本。私有控制仓复用现有仓库级 Secret，不依赖当前套餐不可用的环境保护。Docker/App 已删除，隔离闭环已通过，见 LOOP_ACCEPTANCE.md。
 
 > v1.2 执行与准入范围更新见 [VARIANT_GATE.md](VARIANT_GATE.md)。本文件原“所有私有仓均须平台保护/只在私有控制仓测试”的要求已由用户确认的新范围取代；独立 App 授权与新隔离执行仍未部署。
@@ -107,4 +109,3 @@ stage.py 只接受 tmp 内新的目的目录；不会提交或写远端：
       --destination /home/Architecture/atelier-studio/tmp/automation-rebuild/rollout-next
 
 audit.py 使用现有 Git/gh/netrc 身份，只读访问 API 和公网 HTTPS，并逐侧尝试完整对象备份。API 403、refs、PR 或保护读取失败会分别标记；完整 API 盘点可用已连接的 GitHub connector 补充，但保护仍需真实有权身份核对。--backup 必须是新的备份目录，不能覆盖检查点。
-
