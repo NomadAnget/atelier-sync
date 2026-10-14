@@ -1,0 +1,43 @@
+name: Machine check
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+jobs:
+  machine-check:
+    name: atelier/trusted-ci
+    if: github.event.pull_request.head.repo.id == github.event.repository.id && github.event.pull_request.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Run the checker/workflow from the default branch, never the PR's script.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: NomadAnget/atelier-core
+          ref: master
+          token: ${{ secrets.GH_SYNC_TOKEN }}
+          path: core
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: false
+      - run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python ./core 'ollama>=0.1.6'
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          token: ${{ secrets.GH_SYNC_TOKEN }}
+          path: candidate
+          submodules: recursive
+          persist-credentials: false
+      - name: Check syntax and kernel constitution
+        run: .venv/bin/python -I trusted/machine_check.py candidate/src
