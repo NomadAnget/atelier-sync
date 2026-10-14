@@ -1,42 +1,44 @@
+> 当前状态：Docker 与独立检查 App 已删除。公开变体同作业组合审查 → 私有域协调器合并/回流 → 产品指针重新检查/合并/回流，已在真实隔离仓跑通，见 [验收记录](docs/LOOP_ACCEPTANCE.md)。正式仓登记仍禁用，未切换生产。
+
 # atelier-sync
 
-Forgejo(`forgejo.hurcaguari.top/Carnation`)⇄ GitHub(`github.com/NomadAnget`)**双向 git 同步**。
-取代 Forgejo 的单向推送镜像(`git push --mirror` 会覆盖/删除 GitHub 侧的改动)。
+Atelier 协作协调器：GitHub 默认分支唯一权威，Forgejo 主线镜像；双方开发通过 GitHub PR 汇入权威主线。
 
-## 规则
+当前为本地重构交付，尚未正式切换。registry.json 的 enabled、protection_ready、auto_merge 全部默认 false，publish-engine 对端未确认。不要把一次绿色只读运行当作启用成功。
 
-| 情况 | 处理 |
+## 入口
+
+| 文件 | 作用 |
 |---|---|
-| 分支只在一边 | 复制到另一边 |
-| 一边领先(另一边是其祖先) | 快进落后的一边 |
-| 两边分叉 | 两边都不动;Forgejo 版推到 GitHub `bisync/forgejo/<分支>` 并**开 PR** 合入 `<分支>`。合并 PR 后下次同步快进回 Forgejo |
-| tag 只在一边 / 同名不同指向 | 复制 / 标红 |
-| 删除 | 不跟随 |
+| coordinator.py / coordination/ | 活引用对账、任务状态、主线/tag 回流、PR 与自动合并准入、子模块指针 PR |
+| registry.json | 稳定仓库 ID、可见性、默认分支、所有权、受信 CI 配方及激活门禁 |
+| .github/workflows/bisync.yml | 五分钟兜底、手动、事件提示；共同并发控制 |
+| .github/workflows/trusted-ci.yml | 私有仓 prepare → 无凭据 candidate → 受信 receipt |
+| templates/trusted-ci-publish.yml | 业务仓元数据状态发布 |
+| .github/workflows/release.yml | 已审核 core tag 的隔离构建与独立发布 |
+| audit.py | 双方引用/PR 与可恢复对象备份 |
+| stage.py | 从备份生成隔离 checkout、完整 patch 和摘要，不提交、不推送 |
+| migration.py | 显式旧任务采用，生成本地待审状态文件 |
+| bisync.py | 兼容文件名入口，调用新协调器；旧双向主线算法已移除 |
 
-所有推送都是普通 push(不 `--force`),最坏情况是被拒,不会覆盖任何提交。
-唯一例外是工具自有的 GitHub 分支 `bisync/*`(PR 源分支),不参与同步,按需强制更新。
+模板旧通知入口不再使用高权限 token。完整流程和配置见 [实现契约](docs/architecture.md)、[迁移清单](docs/MIGRATION.md)、[验收报告](docs/VERIFICATION.md) 与 [已批准方案](docs/plan-v1.1.md)。
 
-## 组成
+## 本地验证
 
-- `bisync.py` —— 同步脚本(标准库 + git);`repos.toml` —— 仓库清单
-- `.github/workflows/bisync.yml` —— 运行入口:通知触发(**只同步被通知的仓**)/ 手动 / 每日兜底(后两者查全部)
-- `templates/forgejo-notify.yml` —— 放进各仓 `.forgejo/workflows/`,Forgejo 推送后即时触发
-- `templates/github-notify.yml` —— 放进各仓 `.github/workflows/`,GitHub 推送后即时触发(需该仓配 secret)
+使用现有 venv，不修改项目依赖锁：
 
-## 配置
+    /home/Architecture/.venv/bin/python -m unittest discover -s tests -v
+    /home/Architecture/.venv/bin/python coordinator.py --dry-run --local-auth
 
-| 位置 | 名称 | 内容 |
-|---|---|---|
-| 本仓 Actions secret | `FORGEJO_SYNC_TOKEN` | Forgejo token(repository 读写) |
-| 本仓 Actions secret | `GH_SYNC_TOKEN` | GitHub fine-grained token(Contents + Workflows + Pull requests 读写,含所有同步仓与本仓) |
-| 本仓 Actions variable | `BISYNC_ENABLED` | `true` 才真正推送;否则自动运行只做 dry-run |
-| Forgejo 用户 secret | `GH_SYNC_TOKEN` | 同上 GitHub token(通知用) |
+默认只读。--apply 需要 COORDINATOR_ENABLED=true 和远端持久状态，拒绝 --local-auth/--local-state。全部登记项禁用时报告 disabled，不代表真实仓库检查通过。
 
-WAF:Forgejo 站点 URL 规则"目录过滤"改为 `(^|/)\.(htaccess|…|git|…)`,放行 `<repo>.git/…` 的 git 智能 HTTP。
+## 日常协作
 
-## 本地
+新任务先登记源平台和分支前缀；历史任务显式采用。Forgejo 映射分支只由协调器写，冲突/base 更新回到 Forgejo 源分支解决。GitHub 原生分支自行更新。
 
-```bash
-python3 -m unittest discover -s tests       # 本地裸仓模拟两端的测试
-FORGEJO_SYNC_TOKEN=… GH_SYNC_TOKEN=… python3 bisync.py --dry-run
-```
+PR 的规范告警不阻断；必要测试和组装失败阻断。最新 base 未进入源分支、缺少审批、受信状态过期或不能核对保护规则时自动合并保持暂停。只申请平台原生自动合并，不直接 merge 或 push GitHub 主线。
+
+主线分叉、tag 冲突、源历史重写、可见性变化均要求人工迁移处理。关闭任务不循环重开，删除源分支不复活。发布和生产部署与同步切换分开授权。
+
+repos.toml 仅保留为旧清单参考，新代码不读取它。
+

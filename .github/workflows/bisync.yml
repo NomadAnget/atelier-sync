@@ -1,90 +1,50 @@
-name: bisync(Forgejo ⇄ GitHub)
-# 运行列表标题:通知触发的显示来源端与仓库,手动/定时各自标明,一眼看出每次同步的起因
-run-name: "${{ github.event_name == 'repository_dispatch' && format('sync ← {0} · {1} · {2}', github.event.client_payload.from, github.event.client_payload.repo, github.event.client_payload.ref) || github.event_name == 'schedule' && 'bisync · 每日兜底' || format('bisync · 手动{0}{1}', inputs.dry_run && '(dry-run)' || '', inputs.only && format(' · {0}', inputs.only) || '') }}"
-
-# 触发:
-#   repository_dispatch sync —— 各仓库 push 时由通知工作流触发(即时)
-#   workflow_dispatch        —— 手动(可 dry-run / 只同步指定仓库)
-#   schedule                 —— 每天兜底一次(全量),补通知漏发/同步失败
-# 每次运行都检查 repos.toml 里的全部仓库(已一致的只花一次 ls-remote),所以并发排队时丢掉中间的运行也不会漏。
+name: Collaboration reconciliation
 on:
   repository_dispatch:
     types: [sync]
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: 只打印计划,不推送
+      apply:
         type: boolean
-        default: true
-      only:
-        description: 只同步这些仓库(空格分隔,留空=全部)
-        type: string
-        default: ""
+        default: false
+        description: Apply only after the migration gate is approved
   schedule:
-    - cron: "17 19 * * *"   # UTC 19:17 = 北京时间 03:17
-
-# 安全开关:仓库变量 BISYNC_ENABLED 不为 "true" 时,自动触发(dispatch/定时)一律只做 dry-run。
-# 手动运行以表单里的 dry_run 为准。
-
+    - cron: "*/5 * * * *"
 permissions:
-  contents: read   # 本仓只读;对其他仓的读写与开 PR 全用 GH_SYNC_TOKEN
-
-# 按触发来源分组排队:同组最多保留一个排队中的运行(新的顶掉旧的)。
-# 通知触发只同步被通知的仓,若共用一组,A、B 两仓先后通知时 B 会顶掉 A → A 漏同步;
-# 故按"端/仓"分组。不同仓的运行可并行;同仓两端各一组偶有重叠也无害(推送非 force,后到者只会发现已一致)。
+  contents: read
 concurrency:
-  group: bisync-${{ github.event.client_payload.repo || 'all' }}
+  group: atelier-coordinator
   cancel-in-progress: false
-
 jobs:
-  bisync:
+  reconcile:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name == 'workflow_dispatch' || vars.COORDINATOR_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
-          persist-credentials: false   # 否则 GITHUB_TOKEN 的认证头会盖掉 GH_SYNC_TOKEN(它只能访问本仓)
-
-      # 不缓存裸仓:私有仓代码不另存一份到 Actions 缓存(公开仓的缓存可被 fork PR 工作流读取);
-      # 每次只抓有差异的仓,现拉代价很小。
-      - name: 自测
-        run: python3 -m unittest discover -s tests
-
-      - name: 同步
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - run: uv venv --python 3.11 .venv
+      - name: Test the trusted coordinator
+        run: .venv/bin/python -m unittest discover -s tests -v
+      - name: Reconcile live repositories
         env:
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
           FORGEJO_SYNC_TOKEN: ${{ secrets.FORGEJO_SYNC_TOKEN }}
-          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || github.event_name != 'workflow_dispatch' && vars.BISYNC_ENABLED != 'true' }}
-          ONLY: ${{ inputs.only }}
-          NOTIFIED: ${{ github.event.client_payload.repo }}   # 通知方仓库(owner/name),只同步它
+          COORDINATOR_ENABLED: ${{ vars.COORDINATOR_ENABLED }}
+          COORDINATOR_TRUSTED_SHA: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+          REQUEST_APPLY: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
         run: |
-          set -euo pipefail
-          git config --global user.name bisync
-          git config --global user.email bisync@localhost
-          args=()
-          # 通知触发:只同步被通知的那个仓(去掉 owner 前缀);手动/每小时兜底仍查全部
-          [ -n "${NOTIFIED:-}" ] && ONLY="${NOTIFIED##*/}"
-          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
-          [ -n "${ONLY:-}" ] && args+=(--only $ONLY)
-          python3 bisync.py "${args[@]}"
-      - name: Relay submodule commit to atelier-studio
-        if: always() && github.event_name == 'repository_dispatch' && github.event.action == 'sync'
-        env:
-          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
-          SOURCE_REPOSITORY: ${{ github.event.client_payload.repo }}
-          SOURCE_SHA: ${{ github.event.client_payload.sha }}
-          SOURCE_REF: ${{ github.event.client_payload.ref }}
-        run: |
-          set -euo pipefail
-          case "$SOURCE_REPOSITORY" in
-            NomadAnget/atelier-web|NomadAnget/atelier-scheduler|NomadAnget/atelier-task|NomadAnget/atelier-engines|NomadAnget/atelier-platform_adapters|NomadAnget/atelier-publishers|NomadAnget/atelier-daemons|NomadAnget/atelier-media|NomadAnget/atelier-sentinel|NomadAnget/atelier-pipeline-video|NomadAnget/atelier-pipeline-digest|NomadAnget/atelier-frontend) ;;
-            *) echo "Not a studio submodule; skipping: $SOURCE_REPOSITORY"; exit 0 ;;
-          esac
-          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "Invalid or missing source SHA" >&2; exit 1; fi
-          if [ -z "$GH_SYNC_TOKEN" ]; then echo "GH_SYNC_TOKEN is required to notify atelier-studio" >&2; exit 1; fi
-          payload="$(jq -nc --arg repository "$SOURCE_REPOSITORY" --arg sha "$SOURCE_SHA" --arg ref "$SOURCE_REF" '{event_type:"submodule_commit",client_payload:{repository:$repository,sha:$sha,ref:$ref}}')"
-          curl -sSf -X POST \
-            -H "Authorization: Bearer $GH_SYNC_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/NomadAnget/atelier-studio/dispatches \
-            -d "$payload"
+          args=(--dry-run)
+          if [[ "$COORDINATOR_ENABLED" == "true" && "$REQUEST_APPLY" == "true" ]]; then
+            [[ "$GITHUB_SHA" == "$COORDINATOR_TRUSTED_SHA" ]] || { echo "Unapproved coordinator revision"; exit 1; }
+            args=(--apply)
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "repository_dispatch" ]]; then args+=(--event "$GITHUB_EVENT_PATH"); fi
+          .venv/bin/python coordinator.py "${args[@]}"
+
