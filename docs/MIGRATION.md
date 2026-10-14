@@ -1,3 +1,5 @@
+> Post-merge object refresh: GitHub may create a new main commit during reconciliation. Fetch the exact re-read main SHA before inspecting parent gitlinks; never assume the initial fetch includes an API-created merge.
+
 > Solo real-merge acceptance: manually dispatched, scoped to atelier-reel-solo only; scheduled writes stay disabled. Only automation/verify-solo-20261015 is registered for automatic merge. Existing status/provenance gates stay enforced. No business, dependency or production changes. Full-tree discipline still sees the dormant publishers checkout; report its actual findings.
 
 > 当前 studio 初步部署：仅启用 studio 的 CI 登记；自动合并及协调器写入保持关闭。控制代码与 registry 均保留在私有 atelier-sync，公开结果发布工作流改为检出固定私有控制版本。私有控制仓复用现有仓库级 Secret，不依赖当前套餐不可用的环境保护。Docker/App 已删除，隔离闭环已通过，见 LOOP_ACCEPTANCE.md。

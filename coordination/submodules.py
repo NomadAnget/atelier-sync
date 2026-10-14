@@ -91,6 +91,8 @@ def coordinate(reconciler, parent, mirrored, result):
     url = parent.url("github")
     refs = git.refs(url)
     base = refs["refs/heads/" + parent.github_branch]
+    # A merge in this pass may have created main after the initial object fetch.
+    git.run("fetch", "--quiet", "--no-tags", url, base, cwd=work)
     state, version = reconciler.store.load(parent.key)
     desired = {}
     entries = modules(git, work, base, parent, registry)
@@ -251,4 +253,3 @@ def candidate_approval(reconciler, child, pr, base, record, result):
         if parent.key in consumed and git.refs(parent.url("github"))["refs/heads/" + parent.github_branch] != combinations[parent.key]["base"]:
             raise CoordinationError("Variant base advanced during combination review")
     return {"head": pr["head"]["sha"], "base": base, "merge": merge, "variants": proofs}
-

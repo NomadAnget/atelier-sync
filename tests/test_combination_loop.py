@@ -87,6 +87,14 @@ class CombinationLoopTest(unittest.TestCase):
         work=self.runner.work/(self.parent.key+".git")
         self.assertEqual(modules(self.git,work,final,self.parent,self.registry)[0][2],merged)
         self.assertNotIn("src/domain/impl.py",self.git.run("ls-tree","-r","--name-only",final,cwd=work).stdout)
+    def test_parent_main_created_after_initial_fetch_is_loaded(self):
+        merged = self.commit(self.parent, {"accepted.md": "new main after API merge\n"}, base=self.pbase)
+        work = self.runner.work / (self.parent.key + ".git")
+        self.assertNotEqual(self.git.run("cat-file", "-e", merged + "^{commit}", cwd=work, check=False).returncode, 0)
+        result = Result(self.parent.name)
+        coordinate(self.runner, self.parent, {}, result)
+        self.assertEqual(modules(self.git, work, merged, self.parent, self.registry)[0][2], self.cbase)
+
     def test_failed_combination_keeps_private_main(self):
         self.child_step();draft=self.api.prs(self.parent.github_name)[0]
         self.api.test_and_publish(self.parent,draft,success=False)
@@ -155,4 +163,3 @@ class LocalPlatform:
                            "event":"repository_dispatch","success":success,"run_id":run,"status_id":self.counter}}
         self.records[f"/repos/NomadAnget/atelier-sync/contents/ci/{run}.json"]=receipt
         self.records[f"/repos/NomadAnget/atelier-sync/contents/ci/index/{repo.github_id}-{pr['number']}-{expected['head']}-{expected['base']}.json"]={"version":1,"run_id":run}
-
