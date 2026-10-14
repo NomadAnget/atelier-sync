@@ -1,0 +1,46 @@
+name: Public variant single-job trusted CI
+on:
+  repository_dispatch:
+    types: [atelier_ci]
+permissions:
+  contents: read
+concurrency:
+  group: atelier-variant-ci-${{ github.repository }}-${{ github.event.client_payload.pr }}
+  cancel-in-progress: false
+jobs:
+  variant-ci:
+    if: (github.actor == github.repository_owner || github.actor == 'github-actions[bot]') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: coordination-control
+    steps:
+      - name: Verify the approved default-branch workflow before using private credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_BLOB: ${{ vars.VARIANT_CI_WORKFLOW_BLOB }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_BLOB" =~ ^[0-9a-f]{40}$ ]]
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/trusted-ci.yml?ref=$GITHUB_SHA" --jq .sha)"
+          [[ "$actual" == "$EXPECTED_BLOB" ]]
+      - uses: actions/checkout@v5
+        with:
+          repository: NomadAnget/atelier-sync
+          ref: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+          token: ${{ secrets.GH_SYNC_TOKEN }}
+          persist-credentials: false
+          path: control
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: false
+      - run: uv venv --python 3.11 .venv
+        working-directory: control
+      - name: Prepare, test, and persist metadata in this job
+        working-directory: control
+        env:
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          COORDINATOR_TRUSTED_SHA: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+          PUBLIC_VARIANT_CI_ENABLED: ${{ vars.PUBLIC_VARIANT_CI_ENABLED }}
+        run: .venv/bin/python -m coordination.variant_ci --registry registry.json --bundle "$RUNNER_TEMP/variant-ci-$GITHUB_RUN_ID"
+

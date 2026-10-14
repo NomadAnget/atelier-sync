@@ -1,0 +1,39 @@
+name: Publish trusted CI receipt
+on:
+  repository_dispatch:
+    types: [atelier_ci_result]
+permissions:
+  contents: read
+jobs:
+  publish:
+    name: publish
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: coordination-metadata
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: NomadAnget/atelier-sync
+          ref: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+          token: ${{ secrets.GH_SYNC_TOKEN }}
+          persist-credentials: false
+          path: control
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: false
+      - run: uv venv --python 3.11 .venv
+        working-directory: control
+      - name: Verify private receipt and publish only head/base/merge/result
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          COORDINATOR_TRUSTED_SHA: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+        working-directory: control
+        run: .venv/bin/python -m coordination.ci publish --registry registry.json
+
