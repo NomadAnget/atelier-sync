@@ -26,10 +26,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: NomadAnget/atelier-sync
-          ref: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+          ref: main
           token: ${{ secrets.GH_SYNC_TOKEN }}
           persist-credentials: false
           path: control
+      - name: Record control revision automatically
+        run: echo "COORDINATOR_TRUSTED_SHA=$(git -C control rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
@@ -40,7 +42,6 @@ jobs:
         working-directory: control
         env:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
-          COORDINATOR_TRUSTED_SHA: ${{ vars.COORDINATOR_TRUSTED_SHA }}
           PUBLIC_VARIANT_CI_ENABLED: ${{ vars.PUBLIC_VARIANT_CI_ENABLED }}
         run: .venv/bin/python -m coordination.variant_ci --registry registry.json --bundle "$RUNNER_TEMP/variant-ci-$GITHUB_RUN_ID"
 
