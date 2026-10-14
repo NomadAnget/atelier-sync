@@ -6,7 +6,7 @@ on:
     inputs:
       repository:
         type: choice
-        options: [atelier-studio, atelier-reel-solo, atelier-reel-creator, atelier-engines]
+        options: [atelier-studio, atelier-reel-solo, atelier-reel-creator, atelier-engines, atelier-publishers]
         default: atelier-studio
         description: Registered variant for this manual run
       ci_pr:
@@ -45,7 +45,7 @@ jobs:
         env:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
           FORGEJO_SYNC_TOKEN: ${{ secrets.FORGEJO_SYNC_TOKEN }}
-          COORDINATOR_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && inputs.apply && (inputs.repository == 'atelier-reel-solo' || inputs.repository == 'atelier-engines')) && 'true' || vars.COORDINATOR_ENABLED }}
+          COORDINATOR_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && inputs.apply && (inputs.repository == 'atelier-reel-solo' || inputs.repository == 'atelier-engines' || inputs.repository == 'atelier-publishers')) && 'true' || vars.COORDINATOR_ENABLED }}
           COORDINATOR_TRUSTED_SHA: ${{ vars.COORDINATOR_TRUSTED_SHA }}
           SELECTED_REPOSITORY: ${{ inputs.repository }}
           REQUEST_APPLY: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}

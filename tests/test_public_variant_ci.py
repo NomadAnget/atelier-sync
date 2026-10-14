@@ -3,6 +3,7 @@ from dataclasses import replace
 from pathlib import Path
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -58,7 +59,20 @@ class PublicVariantTest(unittest.TestCase):
             (bundle/"control/manifest.json").write_text(json.dumps(manifest))
             self.assertEqual(execute(bundle,prepared_runtime=True)[0]["code"],0)
             source.write_text("raise RuntimeError('actual required failure')\n")
-            with self.assertRaises(RuntimeError):execute(bundle,prepared_runtime=True)
+            # Keep the real child failure, but capture its expected traceback so
+            # GitHub does not turn this passing negative test into an annotation.
+            run_process = subprocess.run
+            results = []
+            def capture_check(*args, **kwargs):
+                result = run_process(*args, **kwargs, capture_output=True, text=True)
+                results.append(result)
+                return result
+            with patch("coordination.candidate.subprocess.run", side_effect=capture_check):
+                with self.assertRaisesRegex(RuntimeError, "Required check failed"):
+                    execute(bundle,prepared_runtime=True)
+            self.assertEqual(len(results), 1)
+            self.assertNotEqual(results[0].returncode, 0)
+            self.assertIn("RuntimeError: actual required failure", results[0].stderr)
     def test_public_overlay_has_one_job_and_no_source_upload(self):
         import stage
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]/"tmp") as name:
@@ -80,4 +94,3 @@ class PublicVariantTest(unittest.TestCase):
         self.assertNotIn("docker",command)
         self.assertFalse(any("TOKEN" in x for x in command))
 if __name__=="__main__":unittest.main()
-
