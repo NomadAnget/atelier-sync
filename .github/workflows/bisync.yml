@@ -46,7 +46,7 @@ jobs:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
           FORGEJO_SYNC_TOKEN: ${{ secrets.FORGEJO_SYNC_TOKEN }}
           COORDINATOR_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && inputs.apply && (inputs.repository == 'atelier-reel-solo' || inputs.repository == 'atelier-engines' || inputs.repository == 'atelier-publishers')) && 'true' || vars.COORDINATOR_ENABLED }}
-          COORDINATOR_TRUSTED_SHA: ${{ vars.COORDINATOR_TRUSTED_SHA }}
+          COORDINATOR_TRUSTED_SHA: ${{ github.sha }}
           SELECTED_REPOSITORY: ${{ inputs.repository }}
           REQUEST_APPLY: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
         run: |
