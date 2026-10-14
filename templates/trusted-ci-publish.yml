@@ -37,4 +37,3 @@ jobs:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
         working-directory: control
         run: .venv/bin/python -m coordination.ci publish --registry registry.json
-

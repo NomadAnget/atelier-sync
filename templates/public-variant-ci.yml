@@ -14,15 +14,6 @@ jobs:
     timeout-minutes: 45
     environment: coordination-control
     steps:
-      - name: Verify the approved default-branch workflow before using private credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_BLOB: ${{ vars.VARIANT_CI_WORKFLOW_BLOB }}
-        run: |
-          set -euo pipefail
-          [[ "$EXPECTED_BLOB" =~ ^[0-9a-f]{40}$ ]]
-          actual="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/trusted-ci.yml?ref=$GITHUB_SHA" --jq .sha)"
-          [[ "$actual" == "$EXPECTED_BLOB" ]]
       - uses: actions/checkout@v5
         with:
           repository: NomadAnget/atelier-sync
@@ -30,6 +21,14 @@ jobs:
           token: ${{ secrets.GH_SYNC_TOKEN }}
           persist-credentials: false
           path: control
+      - name: Verify workflow against private control template
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          EXPECTED_BLOB="$(git -C control hash-object templates/public-variant-ci.yml)"
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/trusted-ci.yml?ref=$GITHUB_SHA" --jq .sha)"
+          [[ "$actual" == "$EXPECTED_BLOB" ]]
       - name: Record control revision automatically
         run: echo "COORDINATOR_TRUSTED_SHA=$(git -C control rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
@@ -44,4 +43,3 @@ jobs:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
           PUBLIC_VARIANT_CI_ENABLED: ${{ vars.PUBLIC_VARIANT_CI_ENABLED }}
         run: .venv/bin/python -m coordination.variant_ci --registry registry.json --bundle "$RUNNER_TEMP/variant-ci-$GITHUB_RUN_ID"
-
