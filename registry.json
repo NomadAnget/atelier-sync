@@ -69,7 +69,7 @@
       "github_prefixes": [],
       "adopted_forgejo_branches": [],
       "auto_merge": false,
-      "protection_ready": false,
+      "protection_ready": true,
       "role": "assembly",
       "core_sha": "e9f3329c12cc3105ddb8258d2a380a59b6c80a4d",
       "required_context": "atelier/trusted-ci",
@@ -126,7 +126,7 @@
         "automation/verify-solo-20261015"
       ],
       "adopted_forgejo_branches": [],
-      "auto_merge": true,
+      "auto_merge": false,
       "protection_ready": true,
       "role": "assembly",
       "core_sha": "e9f3329c12cc3105ddb8258d2a380a59b6c80a4d",
@@ -183,7 +183,7 @@
       "github_prefixes": [],
       "adopted_forgejo_branches": [],
       "auto_merge": false,
-      "protection_ready": false,
+      "protection_ready": true,
       "role": "assembly",
       "core_sha": "e9f3329c12cc3105ddb8258d2a380a59b6c80a4d",
       "required_context": "atelier/trusted-ci",
@@ -356,13 +356,15 @@
       "forgejo_branch": "master",
       "github_private": true,
       "forgejo_private": true,
-      "enabled": false,
+      "enabled": true,
       "allow_public_import": false,
       "forgejo_prefixes": [],
-      "github_prefixes": [],
+      "github_prefixes": [
+        "fix/cpu-ocr-lifecycle-20261015"
+      ],
       "adopted_forgejo_branches": [],
-      "auto_merge": false,
-      "protection_ready": false,
+      "auto_merge": true,
+      "protection_ready": true,
       "role": "python",
       "core_sha": "e9f3329c12cc3105ddb8258d2a380a59b6c80a4d",
       "required_context": "atelier/trusted-ci",
@@ -384,7 +386,7 @@
           "."
         ]
       ],
-      "disable_reason": "Await branch protection, source ownership adoption, credential migration and isolated integration acceptance",
+      "disable_reason": "",
       "protection_mode": "coordinator"
     },
     {
