@@ -1,3 +1,5 @@
+> Restricted OCR review stage: only engines fix/cpu-ocr-lifecycle-20261015 may merge. All three active bypass-free rulesets have been verified. Parent automatic merges remain disabled; only draft combination branches are created for evidence. Scheduled writes remain disabled.
+
 > Activation stage: enable composition CI for all three public variants first. Keep studio/creator automatic writes disabled until their real CI and rulesets are verified. OCR engine and publishers fixes are reviewed in sequence; discipline becomes blocking only once repaired pointers are selected. Daily development will use registered dev/ branches without adopting existing legacy branches implicitly.
 
 > Post-merge object refresh: GitHub may create a new main commit during reconciliation. Fetch the exact re-read main SHA before inspecting parent gitlinks; never assume the initial fetch includes an API-created merge.
