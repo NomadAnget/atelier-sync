@@ -1,0 +1,61 @@
+name: Check submitted commit
+on:
+  repository_dispatch:
+    types: [atelier_check]
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Changed owner/repository
+        required: true
+        type: string
+      sha:
+        description: Full source commit SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.actor == github.repository_owner || github.actor == 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: false
+      - name: Assemble affected variants and run kernel checks
+        env:
+          GH_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          SOURCE_REPOSITORY: ${{ inputs.repository || github.event.client_payload.repository }}
+          SOURCE_SHA: ${{ inputs.sha || github.event.client_payload.sha }}
+        run: |
+          uv run --no-project --python 3.11 python check_commit.py \
+            --repository "$SOURCE_REPOSITORY" --sha "$SOURCE_SHA" \
+            --work "$GITHUB_WORKSPACE/tmp/check-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Return result summary
+        if: always()
+        env:
+          RESULT_FILE: ${{ github.workspace }}/tmp/check-${{ github.run_id }}-${{ github.run_attempt }}/result.json
+        run: |
+          uv run --no-project --python 3.11 python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RESULT_FILE'])
+          lines = ['# Commit assembly check']
+          if not path.exists():
+              lines.append('Preparation failed; see job log.')
+          else:
+              r = json.loads(path.read_text())
+              lines += [f"Source: `{r['repository']}@{r['source_sha']}`", f"Success: {r['success']}"]
+              if r.get('error'): lines.append(r['error'])
+              for v in r['variants']:
+                  lines.append(f"- {v['repository']}: " + ('skipped' if 'skipped' in v else 'PASS' if v.get('success') else 'FAIL'))
+                  if v.get('error'): lines.append(v['error'])
+                  for c in v['checks']: lines.append(f"  - {' '.join(c['command'])}: exit {c['exit_code']}")
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('\n'.join(lines) + '\n')
+          PY
