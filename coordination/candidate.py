@@ -21,7 +21,7 @@ def execute(bundle, python=sys.executable, *, prepared_runtime=False):
     env = {"TMPDIR": str(runtime / "tmp"), "UV_CACHE_DIR": str(runtime / "uv-cache"),
            "PIP_CACHE_DIR": str(runtime / "pip-cache"), "PATH": os.environ.get("PATH", ""), "HOME": os.environ["HOME"],
            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
-           "PYTHONPATH": str(bundle / "source/tests") + ":" + str(bundle / "source")}
+           "PYTHONPATH": str(bundle / "control/checks") + ":" + str(bundle / "source/tests") + ":" + str(bundle / "source")}
     source = bundle / "source"
     install = [python, "-m", "pip", "install", "--no-cache-dir", str(bundle / "core"), "ollama>=0.1.6"]
     if manifest["role"] != "frontend" and not prepared_runtime:

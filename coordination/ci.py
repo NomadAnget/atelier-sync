@@ -102,6 +102,9 @@ def prepare(registry, github, git, payload, bundle, control_sha, *, execution_re
     snapshot(git, core_work, repo.core_sha, bundle / "core")
     (bundle / "control").mkdir(exist_ok=True)
     shutil.copyfile(Path(__file__).with_name("candidate.py"), bundle / "control/candidate.py")
+    checks = Path(__file__).resolve().parents[1] / "ci_checks"
+    if repo.role == "assembly" and checks.is_dir():
+        shutil.copytree(checks, bundle / "control/checks")
     manifest = {"version": 1, "repository": repo.github_name, "repository_id": repo.github_id,
                 "pr": number, "head": pr["head"]["sha"], "base": base, "merge": merge,
                 "core": repo.core_sha, "submodules": selected, "role": repo.role,

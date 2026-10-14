@@ -4,6 +4,10 @@ on:
     types: [sync]
   workflow_dispatch:
     inputs:
+      ci_pr:
+        type: string
+        default: ""
+        description: Studio PR number for read-only composition CI verification
       apply:
         type: boolean
         default: false
@@ -47,4 +51,25 @@ jobs:
           fi
           if [[ "$GITHUB_EVENT_NAME" == "repository_dispatch" ]]; then args+=(--event "$GITHUB_EVENT_PATH"); fi
           .venv/bin/python coordinator.py "${args[@]}"
+      - name: Request studio composition CI for the current PR head and base
+        if: github.event_name == 'workflow_dispatch' && inputs.ci_pr != ''
+        env:
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          CI_PR: ${{ inputs.ci_pr }}
+        run: |
+          .venv/bin/python - <<'PY'
+          import os
+          from coordination.api import Api
+          value = os.environ['CI_PR']
+          if not value.isdecimal() or int(value) < 1:
+              raise ValueError('Invalid studio PR number')
+          api = Api('github')
+          repo = 'NomadAnget/atelier-studio'
+          pr = api.request('GET', f'/repos/{repo}/pulls/{int(value)}')
+          if pr['state'] != 'open' or pr['head']['repo']['id'] != 1390351409 or pr['base']['ref'] != 'master':
+              raise ValueError('Only an open studio-owned PR targeting master is allowed')
+          base = api.request('GET', f'/repos/{repo}/git/ref/heads/master')['object']['sha']
+          api.request('POST', f'/repos/{repo}/dispatches', {'event_type': 'atelier_ci',
+              'client_payload': {'repository': repo, 'pr': int(value), 'head_sha': pr['head']['sha'], 'base_sha': base}})
+          PY
 
