@@ -95,9 +95,7 @@
           "-v",
           "test_s06_alignment.TestS06Alignment.test_cross_speaker_spill_no_collision",
           "test_s06_alignment.TestS06Alignment.test_non_binding_member_not_slowed"
-        ]
-      ],
-      "advisory_commands": [
+        ],
         [
           "{python}",
           "-m",
@@ -105,6 +103,7 @@
           "src"
         ]
       ],
+      "advisory_commands": [],
       "disable_reason": "Studio CI bootstrap only; writes and automatic merges remain disabled",
       "protection_mode": "ruleset",
       "public_variant_ci": true
@@ -153,9 +152,7 @@
           "-v",
           "test_s06_alignment.TestS06Alignment.test_cross_speaker_spill_no_collision",
           "test_s06_alignment.TestS06Alignment.test_non_binding_member_not_slowed"
-        ]
-      ],
-      "advisory_commands": [
+        ],
         [
           "{python}",
           "-m",
@@ -163,6 +160,7 @@
           "src"
         ]
       ],
+      "advisory_commands": [],
       "disable_reason": "",
       "protection_mode": "ruleset",
       "public_variant_ci": true
@@ -209,9 +207,7 @@
           "-v",
           "test_s06_alignment.TestS06Alignment.test_cross_speaker_spill_no_collision",
           "test_s06_alignment.TestS06Alignment.test_non_binding_member_not_slowed"
-        ]
-      ],
-      "advisory_commands": [
+        ],
         [
           "{python}",
           "-m",
@@ -219,6 +215,7 @@
           "src"
         ]
       ],
+      "advisory_commands": [],
       "disable_reason": "Composition CI bootstrap; writes remain disabled",
       "protection_mode": "ruleset",
       "public_variant_ci": true
@@ -440,13 +437,15 @@
       "forgejo_branch": "master",
       "github_private": true,
       "forgejo_private": true,
-      "enabled": false,
+      "enabled": true,
       "allow_public_import": false,
       "forgejo_prefixes": [],
-      "github_prefixes": [],
+      "github_prefixes": [
+        "fix/cpu-ocr-lifecycle-20261015"
+      ],
       "adopted_forgejo_branches": [],
-      "auto_merge": false,
-      "protection_ready": false,
+      "auto_merge": true,
+      "protection_ready": true,
       "role": "python",
       "core_sha": "e9f3329c12cc3105ddb8258d2a380a59b6c80a4d",
       "required_context": "atelier/trusted-ci",
@@ -458,9 +457,7 @@
           "compileall",
           "-q",
           "."
-        ]
-      ],
-      "advisory_commands": [
+        ],
         [
           "{python}",
           "-m",
@@ -468,7 +465,8 @@
           "."
         ]
       ],
-      "disable_reason": "Await branch protection, source ownership adoption, credential migration and isolated integration acceptance",
+      "advisory_commands": [],
+      "disable_reason": "",
       "protection_mode": "coordinator"
     },
     {
