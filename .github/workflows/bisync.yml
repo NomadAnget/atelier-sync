@@ -6,7 +6,7 @@ on:
     inputs:
       repository:
         type: choice
-        options: [atelier-studio, atelier-reel-solo]
+        options: [atelier-studio, atelier-reel-solo, atelier-reel-creator]
         default: atelier-studio
         description: Registered variant for this manual run
       ci_pr:

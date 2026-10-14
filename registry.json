@@ -177,8 +177,8 @@
       "forgejo_branch": "master",
       "github_private": false,
       "forgejo_private": true,
-      "enabled": false,
-      "allow_public_import": false,
+      "enabled": true,
+      "allow_public_import": true,
       "forgejo_prefixes": [],
       "github_prefixes": [],
       "adopted_forgejo_branches": [],
@@ -192,8 +192,23 @@
         [
           "{python}",
           "-m",
+          "compileall",
+          "-q",
+          "src/main.py"
+        ],
+        [
+          "{python}",
+          "-m",
           "src.main",
           "--check"
+        ],
+        [
+          "{python}",
+          "-m",
+          "unittest",
+          "-v",
+          "test_s06_alignment.TestS06Alignment.test_cross_speaker_spill_no_collision",
+          "test_s06_alignment.TestS06Alignment.test_non_binding_member_not_slowed"
         ]
       ],
       "advisory_commands": [
@@ -204,7 +219,7 @@
           "src"
         ]
       ],
-      "disable_reason": "Await branch protection, source ownership adoption, credential migration and isolated integration acceptance",
+      "disable_reason": "Composition CI bootstrap; writes remain disabled",
       "protection_mode": "ruleset",
       "public_variant_ci": true
     },

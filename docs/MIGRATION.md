@@ -1,3 +1,5 @@
+> Activation stage: enable composition CI for all three public variants first. Keep studio/creator automatic writes disabled until their real CI and rulesets are verified. OCR engine and publishers fixes are reviewed in sequence; discipline becomes blocking only once repaired pointers are selected. Daily development will use registered dev/ branches without adopting existing legacy branches implicitly.
+
 > Post-merge object refresh: GitHub may create a new main commit during reconciliation. Fetch the exact re-read main SHA before inspecting parent gitlinks; never assume the initial fetch includes an API-created merge.
 
 > Solo real-merge acceptance: manually dispatched, scoped to atelier-reel-solo only; scheduled writes stay disabled. Only automation/verify-solo-20261015 is registered for automatic merge. Existing status/provenance gates stay enforced. No business, dependency or production changes. Full-tree discipline still sees the dormant publishers checkout; report its actual findings.
