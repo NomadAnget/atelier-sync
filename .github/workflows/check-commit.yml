@@ -32,6 +32,7 @@ jobs:
           python-version: "3.11"
           enable-cache: false
       - name: Validate notified child PR
+        id: validate
         if: github.event_name == 'repository_dispatch' && github.event.action != 'atelier_check'
         env:
           GH_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
@@ -76,13 +77,18 @@ jobs:
           )
           if not valid:
               raise SystemExit('Rejected: PR is stale, draft, fork-origin, or targets a different base.')
-          print(f'Validated {repo}#{number} at {sha}.')
+          candidate = pr.get('merge_commit_sha')
+          if not re.fullmatch(r'[0-9a-f]{40}', candidate or ''):
+              raise SystemExit('GitHub has not prepared a merge commit for this PR yet.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'candidate_sha={candidate}\\n')
+          print(f'Validated {repo}#{number}: head {sha}, merge tree {candidate}.')
           PY
       - name: Assemble affected variants and run kernel checks
         env:
           GH_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
           SOURCE_REPOSITORY: ${{ inputs.repository || github.event.client_payload.child_repo || github.event.client_payload.repository }}
-          SOURCE_SHA: ${{ inputs.sha || github.event.client_payload.head_sha || github.event.client_payload.sha }}
+          SOURCE_SHA: ${{ steps.validate.outputs.candidate_sha || inputs.sha || github.event.client_payload.head_sha || github.event.client_payload.sha }}
         run: |
           uv run --no-project --python 3.11 python check_commit.py \
             --repository "$SOURCE_REPOSITORY" --sha "$SOURCE_SHA" \
