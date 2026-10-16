@@ -76,6 +76,12 @@ def main():
     if preview["tree"]["sha"] != candidate_tree:
         raise RuntimeError("PR merge tree differs from the checked head tree; nothing was merged.")
 
+    merged = ({"merged": True, "sha": pr.get("merge_commit_sha")} if already_merged
+              else {"merged": False, "sha": checked_candidate})
+    if not merged["sha"]:
+        raise RuntimeError("Source PR has no merge candidate SHA.")
+    promoted = []
+
     affected = []
     for variant in result.get("variants", []):
         if variant.get("skipped") or variant.get("repository") == child:
@@ -89,18 +95,14 @@ def main():
 
     for repo, module_path, base_sha in affected:
         installed_before = api("GET", path(repo, f"contents/{module_path}?ref=master"))
-        if installed_before.get("sha") == merged["sha"]:
+        if already_merged and installed_before.get("sha") == merged["sha"]:
             promoted.append(f"{repo}: already synchronized")
             continue
         current = api("GET", path(repo, "git/ref/heads/master"))["object"]["sha"]
         if current != base_sha:
             raise RuntimeError(f"{repo}/master moved since it was checked; rerun before promotion.")
 
-    if already_merged:
-        merged = {"merged": True, "sha": pr.get("merge_commit_sha")}
-        if not merged["sha"]:
-            raise RuntimeError("Merged source PR has no merge commit SHA.")
-    else:
+    if not already_merged:
         merged = api("PUT", path(child, f"pulls/{pr_number}/merge"),
                      {"sha": expected_head, "merge_method": "merge"})
         if not merged.get("merged"):
@@ -109,7 +111,6 @@ def main():
     if final["tree"]["sha"] != candidate_tree:
         raise RuntimeError("Merged source tree differs from the checked tree; variant pointers were not changed.")
 
-    promoted = []
     for repo, module_path, base_sha in affected:
         current = api("GET", path(repo, "git/ref/heads/master"))["object"]["sha"]
         if current != base_sha:
@@ -133,8 +134,10 @@ def main():
             if "(422)" not in str(exc):
                 raise
             existing = api("GET", path(repo, f"git/ref/heads/{branch}"))["object"]["sha"]
-            if existing != commit["sha"]:
+            installed_branch = api("GET", path(repo, f"contents/{module_path}?ref={branch}"))
+            if installed_branch.get("sha") != merged["sha"]:
                 raise RuntimeError(f"{repo}:{branch} exists with different content.") from exc
+            commit = api("GET", path(repo, f"git/commits/{existing}"))
 
         marker = "<!-- atelier-sync-pointer-update -->"
         body = (
