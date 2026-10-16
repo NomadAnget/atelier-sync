@@ -87,6 +87,12 @@ jobs:
           uv run --no-project --python 3.11 python check_commit.py \
             --repository "$SOURCE_REPOSITORY" --sha "$SOURCE_SHA" \
             --work "$GITHUB_WORKSPACE/tmp/check-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Merge checked PR and synchronize variant pointers
+        if: success() && github.event_name == 'repository_dispatch' && github.event.action != 'atelier_check'
+        env:
+          GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          RESULT_FILE: ${{ github.workspace }}/tmp/check-${{ github.run_id }}-${{ github.run_attempt }}/result.json
+        run: python promote_pr.py
       - name: Return result summary
         if: always()
         env:
