@@ -67,7 +67,7 @@ jobs:
           except (urllib.error.HTTPError, urllib.error.URLError) as exc:
               raise SystemExit(f'Could not verify child PR: {exc}')
           valid = (
-              pr.get('state') == 'open'
+              (pr.get('state') == 'open' or (pr.get('state') == 'closed' and pr.get('merged')))
               and not pr.get('draft')
               and pr.get('head', {}).get('sha') == sha
               and pr.get('head', {}).get('repo', {}).get('full_name') == repo
@@ -88,6 +88,7 @@ jobs:
             --repository "$SOURCE_REPOSITORY" --sha "$SOURCE_SHA" \
             --work "$GITHUB_WORKSPACE/tmp/check-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Merge checked PR and synchronize variant pointers
+        id: promote
         if: success() && github.event_name == 'repository_dispatch' && github.event.action != 'atelier_check'
         env:
           GH_SYNC_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
@@ -101,6 +102,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.sha || github.event.client_payload.head_sha || github.event.client_payload.sha }}
           SOURCE_PR: ${{ inputs.pr_number || github.event.client_payload.pr_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PROMOTION_OUTCOME: ${{ steps.promote.outcome }}
           RESULT_FILE: ${{ github.workspace }}/tmp/check-${{ github.run_id }}-${{ github.run_attempt }}/result.json
         run: |
           python - <<'PY'
@@ -113,6 +115,9 @@ jobs:
 
           path = Path(os.environ['RESULT_FILE'])
           lines = ['# Commit assembly check']
+          promotion = os.environ.get('PROMOTION_OUTCOME', 'skipped')
+          if promotion != 'skipped':
+              lines.append(f'Promotion: {promotion}')
           result = None
           if not path.exists():
               lines.append('Preparation failed; see job log.')
