@@ -81,7 +81,7 @@ jobs:
           if not re.fullmatch(r'[0-9a-f]{40}', candidate or ''):
               raise SystemExit('GitHub has not prepared a merge commit for this PR yet.')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'candidate_sha={candidate}\\n')
+              output.write(f'candidate_sha={candidate}\n')
           print(f'Validated {repo}#{number}: head {sha}, merge tree {candidate}.')
           PY
       - name: Assemble affected variants and run kernel checks
