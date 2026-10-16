@@ -47,12 +47,15 @@ def main():
     pr_number = str(payload.get("pr_number", ""))
     expected_head = payload.get("head_sha") or payload.get("sha")
     expected_base = payload.get("base_sha")
+    checked_candidate = result.get("source_sha")
     if not result.get("success"):
         raise RuntimeError("Kernel check failed; no PR was merged.")
-    if not child or not pr_number.isdigit() or not re.fullmatch(r"[0-9a-f]{40}", str(expected_head)):
-        raise RuntimeError("Notification must include repository, PR number, and full head SHA.")
-    if result.get("repository") != child or result.get("source_sha") != expected_head:
-        raise RuntimeError("Checked commit does not match the notified PR.")
+    if (not child or not pr_number.isdigit()
+        or not re.fullmatch(r"[0-9a-f]{40}", str(expected_head))
+        or not re.fullmatch(r"[0-9a-f]{40}", str(checked_candidate or ""))):
+        raise RuntimeError("Notification and check result must include full source commit SHAs.")
+    if result.get("repository") != child:
+        raise RuntimeError("Checked repository does not match the notified PR.")
 
     pr = api("GET", path(child, f"pulls/{pr_number}"))
     already_merged = pr.get("state") == "closed" and pr.get("merged") is True
@@ -64,7 +67,7 @@ def main():
         or (expected_base and pr.get("base", {}).get("sha") != expected_base)):
         raise RuntimeError("Source PR changed or is not eligible for automatic merge.")
 
-    candidate = api("GET", path(child, f"git/commits/{expected_head}"))
+    candidate = api("GET", path(child, f"git/commits/{checked_candidate}"))
     candidate_tree = candidate["tree"]["sha"]
     preview_sha = pr.get("merge_commit_sha")
     if not preview_sha:
@@ -78,7 +81,7 @@ def main():
         if variant.get("skipped") or variant.get("repository") == child:
             continue
         matches = [p for p, item in variant.get("submodules", {}).items()
-                   if item.get("sha") == expected_head]
+                   if item.get("sha") == checked_candidate]
         if matches:
             if len(matches) != 1:
                 raise RuntimeError(f"Ambiguous submodule path in {variant['repository']}.")
