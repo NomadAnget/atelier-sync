@@ -46,6 +46,7 @@ def main():
     child = payload.get("child_repo") or payload.get("repository")
     pr_number = str(payload.get("pr_number", ""))
     expected_head = payload.get("head_sha") or payload.get("sha")
+    expected_base = payload.get("base_sha")
     if not result.get("success"):
         raise RuntimeError("Kernel check failed; no PR was merged.")
     if not child or not pr_number.isdigit() or not re.fullmatch(r"[0-9a-f]{40}", str(expected_head)):
@@ -58,7 +59,8 @@ def main():
         or pr.get("head", {}).get("sha") != expected_head
         or pr.get("head", {}).get("repo", {}).get("full_name") != child
         or pr.get("base", {}).get("repo", {}).get("full_name") != child
-        or pr.get("base", {}).get("ref") != "master"):
+        or pr.get("base", {}).get("ref") != "master"
+        or (expected_base and pr.get("base", {}).get("sha") != expected_base)):
         raise RuntimeError("Source PR changed or is not eligible for automatic merge.")
 
     candidate = api("GET", path(child, f"git/commits/{expected_head}"))
@@ -123,11 +125,11 @@ def main():
 
         marker = "<!-- atelier-sync-pointer-update -->"
         body = (
-            f"atelier-sync generated this pointer update after passing kernel checks.\\n\\n"
-            f"- Source PR: https://github.com/{child}/pull/{pr_number}\\n"
-            f"- Checked head: {expected_head}\\n"
-            f"- Merged child commit: {merged['sha']}\\n"
-            f"- Submodule path: {module_path}\\n\\n{marker}"
+            f"atelier-sync generated this pointer update after passing kernel checks.\n\n"
+            f"- Source PR: https://github.com/{child}/pull/{pr_number}\n"
+            f"- Checked head: {expected_head}\n"
+            f"- Merged child commit: {merged['sha']}\n"
+            f"- Submodule path: {module_path}\n\n{marker}"
         )
         prs = api("GET", path(repo, f"pulls?state=open&head={OWNER}:{branch}&base=master"))
         pointer_pr = prs[0] if prs else api("POST", path(repo, "pulls"), {
@@ -153,8 +155,8 @@ def main():
         "- Updated variants: " + (", ".join(promoted) if promoted else "none; this repository is not a variant submodule."),
     ]
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
-        stream.write("\\n".join(lines) + "\\n")
-    print("\\n".join(lines))
+        stream.write("\n".join(lines) + "\n")
+    print("\n".join(lines))
 
 if __name__ == "__main__":
     try:
