@@ -90,23 +90,88 @@ jobs:
       - name: Return result summary
         if: always()
         env:
+          GH_TOKEN: ${{ secrets.GH_SYNC_TOKEN }}
+          SOURCE_REPOSITORY: ${{ inputs.repository || github.event.client_payload.child_repo || github.event.client_payload.repository }}
+          SOURCE_SHA: ${{ inputs.sha || github.event.client_payload.head_sha || github.event.client_payload.sha }}
+          SOURCE_PR: ${{ inputs.pr_number || github.event.client_payload.pr_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RESULT_FILE: ${{ github.workspace }}/tmp/check-${{ github.run_id }}-${{ github.run_attempt }}/result.json
         run: |
-          uv run --no-project --python 3.11 python - <<'PY'
-          import json, os
+          python - <<'PY'
+          import json
+          import os
           from pathlib import Path
+          import re
+          import urllib.error
+          import urllib.request
+
           path = Path(os.environ['RESULT_FILE'])
           lines = ['# Commit assembly check']
+          result = None
           if not path.exists():
               lines.append('Preparation failed; see job log.')
           else:
-              r = json.loads(path.read_text())
-              lines += [f"Source: `{r['repository']}@{r['source_sha']}`", f"Success: {r['success']}"]
-              if r.get('error'): lines.append(r['error'])
-              for v in r['variants']:
-                  lines.append(f"- {v['repository']}: " + ('skipped' if 'skipped' in v else 'PASS' if v.get('success') else 'FAIL'))
-                  if v.get('error'): lines.append(v['error'])
-                  for c in v['checks']: lines.append(f"  - {' '.join(c['command'])}: exit {c['exit_code']}")
+              result = json.loads(path.read_text())
+              lines += [f"Source: `{result['repository']}@{result['source_sha']}`",
+                        f"Success: {result['success']}"]
+              if result.get('error'):
+                  lines.append(result['error'])
+              for variant in result['variants']:
+                  state = 'skipped' if 'skipped' in variant else 'PASS' if variant.get('success') else 'FAIL'
+                  lines.append(f"- {variant['repository']}: {state}")
+                  if variant.get('error'):
+                      lines.append(variant['error'])
+                  for check in variant['checks']:
+                      lines.append(f"  - {' '.join(check['command'])}: exit {check['exit_code']}")
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
               stream.write('\n'.join(lines) + '\n')
+
+          repository = os.environ.get('SOURCE_REPOSITORY', '')
+          number = os.environ.get('SOURCE_PR', '')
+          if not re.fullmatch(r'NomadAnget/atelier-[A-Za-z0-9_.-]+', repository) or not number.isdigit():
+              print('No valid source PR was supplied; result remains in the Actions summary.')
+              raise SystemExit(0)
+
+          success = bool(result and result.get('success'))
+          title = '✅ Atelier kernel check passed' if success else '❌ Atelier kernel check failed'
+          body = [
+              '<!-- atelier-sync-check-result -->',
+              f'## {title}',
+              f'Source: `{repository}@{os.environ.get("SOURCE_SHA", "")}`',
+              f'Central run: [View check details]({os.environ["RUN_URL"]})',
+              '',
+          ]
+          if result:
+              for variant in result['variants']:
+                  state = 'SKIPPED' if 'skipped' in variant else 'PASS' if variant.get('success') else 'FAIL'
+                  body.append(f"- **{variant['repository']}**: {state}")
+                  if variant.get('error'):
+                      body.append(f"  - {variant['error']}")
+                  for check in variant['checks']:
+                      if check['exit_code'] != 0:
+                          body.append(f"  - `{' '.join(check['command'])}` exited with {check['exit_code']}")
+                          log = path.parent / (variant['repository'].split('/')[-1] + '-runtime') / 'constitution.log'
+                          if 'atelier_core.discipline' in ' '.join(check['command']) and log.exists():
+                              excerpt = log.read_text(errors='replace')[-1800:].strip()
+                              if excerpt:
+                                  body += ['', '<details><summary>Failure output</summary>', '', '```text', excerpt, '```', '', '</details>']
+          else:
+              body.append('The central workflow could not prepare the check report. See the run log.')
+
+          request = urllib.request.Request(
+              f'https://api.github.com/repos/{repository}/issues/{number}/comments',
+              data=json.dumps({'body': '\n'.join(body)}).encode(),
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Content-Type': 'application/json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              },
+              method='POST',
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  print(f"Posted check summary to {repository}#{number} (HTTP {response.status}).")
+          except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+              print(f"Could not post summary to source PR; check result is still available in the Actions summary: {exc}")
           PY
