@@ -81,6 +81,7 @@ def main():
     if not merged["sha"]:
         raise RuntimeError("Source PR has no merge candidate SHA.")
     promoted = []
+    already_synchronized = set()
 
     affected = []
     for variant in result.get("variants", []):
@@ -97,6 +98,7 @@ def main():
         installed_before = api("GET", path(repo, f"contents/{module_path}?ref=master"))
         if already_merged and installed_before.get("sha") == merged["sha"]:
             promoted.append(f"{repo}: already synchronized")
+            already_synchronized.add(repo)
             continue
         current = api("GET", path(repo, "git/ref/heads/master"))["object"]["sha"]
         if current != base_sha:
@@ -112,6 +114,8 @@ def main():
         raise RuntimeError("Merged source tree differs from the checked tree; variant pointers were not changed.")
 
     for repo, module_path, base_sha in affected:
+        if repo in already_synchronized:
+            continue
         current = api("GET", path(repo, "git/ref/heads/master"))["object"]["sha"]
         if current != base_sha:
             raise RuntimeError(f"{repo}/master moved during promotion; pointer update stopped.")
