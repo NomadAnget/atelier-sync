@@ -55,7 +55,8 @@ def main():
         raise RuntimeError("Checked commit does not match the notified PR.")
 
     pr = api("GET", path(child, f"pulls/{pr_number}"))
-    if (pr.get("state") != "open" or pr.get("draft")
+    already_merged = pr.get("state") == "closed" and pr.get("merged") is True
+    if ((pr.get("state") != "open" and not already_merged) or (pr.get("draft") and not already_merged)
         or pr.get("head", {}).get("sha") != expected_head
         or pr.get("head", {}).get("repo", {}).get("full_name") != child
         or pr.get("base", {}).get("repo", {}).get("full_name") != child
@@ -84,14 +85,23 @@ def main():
             affected.append((variant["repository"], matches[0], variant["base"]["sha"]))
 
     for repo, module_path, base_sha in affected:
+        installed_before = api("GET", path(repo, f"contents/{module_path}?ref=master"))
+        if installed_before.get("sha") == merged["sha"]:
+            promoted.append(f"{repo}: already synchronized")
+            continue
         current = api("GET", path(repo, "git/ref/heads/master"))["object"]["sha"]
         if current != base_sha:
             raise RuntimeError(f"{repo}/master moved since it was checked; rerun before promotion.")
 
-    merged = api("PUT", path(child, f"pulls/{pr_number}/merge"),
-                 {"sha": expected_head, "merge_method": "merge"})
-    if not merged.get("merged"):
-        raise RuntimeError(f"Source PR merge failed: {merged.get('message', 'unknown error')}")
+    if already_merged:
+        merged = {"merged": True, "sha": pr.get("merge_commit_sha")}
+        if not merged["sha"]:
+            raise RuntimeError("Merged source PR has no merge commit SHA.")
+    else:
+        merged = api("PUT", path(child, f"pulls/{pr_number}/merge"),
+                     {"sha": expected_head, "merge_method": "merge"})
+        if not merged.get("merged"):
+            raise RuntimeError(f"Source PR merge failed: {merged.get('message', 'unknown error')}")
     final = api("GET", path(child, f"git/commits/{merged['sha']}"))
     if final["tree"]["sha"] != candidate_tree:
         raise RuntimeError("Merged source tree differs from the checked tree; variant pointers were not changed.")
