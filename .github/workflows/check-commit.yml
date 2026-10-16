@@ -144,11 +144,16 @@ jobs:
               raise SystemExit(0)
 
           success = bool(result and result.get('success'))
-          title = '✅ Atelier kernel check passed' if success else '❌ Atelier kernel check failed'
+          promotion = os.environ.get('PROMOTION_OUTCOME', 'skipped')
+          if success and promotion == 'failure':
+              title = '⚠️ Atelier check passed, but automatic promotion failed'
+          else:
+              title = '✅ Atelier kernel check passed' if success else '❌ Atelier kernel check failed'
           body = [
               '<!-- atelier-sync-check-result -->',
               f'## {title}',
               f'Source: `{repository}@{os.environ.get("SOURCE_SHA", "")}`',
+              f'Promotion: {promotion}',
               f'Central run: [View check details]({os.environ["RUN_URL"]})',
               '',
           ]
